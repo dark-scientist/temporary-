@@ -1,0 +1,41 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+env/
+ENV/
+
+# Downloaded models and data
+model/models/*
+!model/models/.gitkeep
+piper/
+database/vector_store/*
+!database/vector_store/.gitkeep
+*.index
+*.pkl
+
+# Audio files
+*.wav
+*.mp3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/*.log
+*.log
+
+# Temporary files
+*.tmp
