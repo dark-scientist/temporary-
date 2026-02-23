@@ -2,6 +2,58 @@
 
 A complete voice-based Retrieval-Augmented Generation system running entirely offline on Linux, optimized for CPU-only processing with 16GB RAM.
 
+## Quick Start Guide (For Existing Setup)
+
+If you've already completed the installation and want to add new documents or run the system:
+
+### Adding New Documents and Running
+
+1. **Add your PDF/TXT files:**
+```bash
+cp your-new-file.pdf Open_Source_RAG_With_Speech/data/documents/
+```
+
+2. **Navigate to project folder:**
+```bash
+cd Open_Source_RAG_With_Speech
+```
+
+3. **Activate virtual environment:**
+```bash
+source venv/bin/activate
+```
+
+4. **Rebuild the index (if you added new documents):**
+```bash
+# Delete old index first
+rm -rf database/vector_store/
+
+# Build new index with all documents
+python build_index.py
+```
+
+You'll see output like:
+```
+[RAG] Loading documents from data/documents/...
+[RAG] Found X files
+[RAG] Chunking and embedding...
+[RAG] Index build complete. Total chunks: XXX
+```
+
+5. **Start Ollama (in a separate terminal):**
+```bash
+ollama serve
+```
+
+6. **Run the app:**
+```bash
+python app.py
+```
+
+Then select your model and start asking questions about your documents!
+
+---
+
 ## Features
 
 - **Fully Offline**: Works without internet after initial setup
@@ -42,16 +94,110 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Pull Ollama models (choose at least one):
+3. Download the BGE Embedding Model:
+
+The embedding model must be downloaded once and saved locally so the system works offline.
+
+Make sure your venv is activated, then run:
+```bash
+python -c "
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer('BAAI/bge-small-en-v1.5')
+model.save('./model/models/bge-small-en-v1.5')
+print('Embedding model saved successfully.')
+"
+```
+
+This saves the model to `model/models/bge-small-en-v1.5/` — after this it works fully offline.
+
+4. Download Piper TTS:
+
+Piper TTS must be downloaded manually. Follow these steps:
+
+1. Go to https://github.com/rhasspy/piper/releases
+2. Download: `piper_linux_x86_64.tar.gz`
+3. Extract it — you will get a folder containing the piper binary and espeak-ng-data/
+4. Copy the piper binary to: `piper/piper_exe`
+5. Copy the espeak-ng-data/ folder to: `piper/espeak-ng-data/`
+
+Then download the English voice model:
+1. Go to https://github.com/rhasspy/piper/releases
+2. Download: `en_US-lessac-medium.onnx` and `en_US-lessac-medium.onnx.json`
+3. Place both files in the `piper/` folder
+
+Your `piper/` folder should look like this:
+```
+piper/
+├── piper_exe
+├── espeak-ng-data/
+├── en_US-lessac-medium.onnx
+└── en_US-lessac-medium.onnx.json
+```
+
+Make piper executable:
+```bash
+chmod +x piper/piper_exe
+```
+
+Test Piper works:
+```bash
+echo "Hello, this is a test." | ./piper/piper_exe --model piper/en_US-lessac-medium.onnx --output_raw | aplay -r 22050 -f S16_LE -c 1
+```
+
+5. Pull Ollama models (choose at least one):
 ```bash
 ollama pull llama3.2:3b      # Fastest (2GB)
 ollama pull qwen2.5:7b        # Balanced (4.7GB)
 ollama pull deepseek-r1:7b    # Most capable (4.7GB)
 ```
 
-4. Add your documents:
+6. Add your documents:
 - Place .txt or .pdf files in `data/documents/`
-- The system will automatically index them on first run
+- Run the indexing script (see next section)
+
+## Running the System (Step by Step)
+
+The system is split into two stages. Always run them in this order:
+
+### Stage 1 — Build the FAISS Index (Run Once)
+
+Before running the main app, you must first index your documents into the FAISS vector database.
+
+1. Place your .txt or .pdf files into `data/documents/`
+2. Make sure your venv is activated:
+```bash
+source venv/bin/activate
+```
+3. Run the indexing script:
+```bash
+python build_index.py
+```
+
+You will see output like:
+```
+[RAG] Loading documents from data/documents/...
+[RAG] Found 3 files
+[RAG] Chunking and embedding... this may take a few minutes on CPU
+[RAG] FAISS index saved to database/vector_store/
+[RAG] Index build complete. Total chunks: 142
+```
+
+You only need to run this again if you add new documents. To force a rebuild, delete the `database/vector_store/` folder and run again.
+
+### Stage 2 — Run the Voice App
+
+Once the index is built, start the main application:
+
+1. Make sure Ollama is running in a separate terminal:
+```bash
+ollama serve
+```
+2. Run the app:
+```bash
+python app.py
+```
+3. Select your model from the menu
+4. Press Enter to speak, ask your question, wait for response
 
 ### Usage
 
@@ -80,6 +226,7 @@ python app.py
 ```
 Open_Source_RAG_With_Speech/
 ├── app.py                    # Entry point
+├── build_index.py            # Standalone indexing script (run first)
 ├── README.md                 # This file
 ├── requirements.txt          # Python dependencies
 ├── .gitignore               # Git ignore rules
