@@ -3,15 +3,19 @@
   justify-content: space-between;
   align-items: center;
   padding: 20px 40px;
-  background-color: var(--white-bg);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  background: linear-gradient(135deg, #000009, #3533cd, #00186c);
+  box-shadow: 0 4px 20px rgba(0, 0, 9, 0.3);
 }
 
-.navbar-left .logo {
-  font-family: 'Courier New', Courier, monospace;
-  font-weight: bold;
-  font-size: 24px;
-  color: var(--golden-brown);
+.navbar-left {
+  display: flex;
+  align-items: center;
+}
+
+.logo-image {
+  height: 48px;
+  width: auto;
+  object-fit: contain;
 }
 
 .navbar-center {
@@ -20,26 +24,15 @@
 }
 
 .nav-link {
+  font-family: 'Figtree', sans-serif;
   font-size: 16px;
-  color: var(--text-dark);
-  text-decoration: none;
+  font-weight: 500;
+  color: white;
   position: relative;
-  transition: all 0.2s ease;
 }
 
-.nav-link::after {
-  content: '';
-  position: absolute;
-  bottom: -4px;
-  left: 0;
-  width: 0;
-  height: 2px;
-  background-color: var(--golden-brown);
-  transition: width 0.2s ease;
-}
-
-.nav-link:hover::after {
-  width: 100%;
+.nav-link:hover {
+  color: #f33f3f;
 }
 
 .navbar-right .user-profile {
@@ -51,11 +44,12 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background-color: var(--golden-brown);
+  background: var(--gradient-dark);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
+  font-family: 'Figtree', sans-serif;
+  font-weight: 600;
   font-size: 16px;
 }

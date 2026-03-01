@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './ChatAssistant.css'
 
 const API_BASE_URL = 'http://localhost:8000'
@@ -12,23 +12,19 @@ function ChatAssistant() {
   const [backendStatus, setBackendStatus] = useState('checking')
   const [mediaRecorder, setMediaRecorder] = useState(null)
   const [audioContext, setAudioContext] = useState(null)
-  const [silenceTimeout, setSilenceTimeout] = useState(null)
   const [messageIdCounter, setMessageIdCounter] = useState(0)
   
   const messagesEndRef = useRef(null)
   const recordingTimeoutRef = useRef(null)
 
-  // Check backend health on mount
   useEffect(() => {
     checkBackendHealth()
   }, [])
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom()
   }, [messages])
 
-  // Add welcome message when chat opens
   useEffect(() => {
     if (isOpen && messages.length === 0) {
       addMessage(
@@ -118,7 +114,7 @@ function ChatAssistant() {
 
     let silenceStart = Date.now()
     const SILENCE_THRESHOLD = 10
-    const SILENCE_DURATION = 3000 // 3 seconds
+    const SILENCE_DURATION = 3000
 
     const checkAudioLevel = () => {
       analyser.getByteTimeDomainData(dataArray)
@@ -174,12 +170,10 @@ function ChatAssistant() {
       setMediaRecorder(recorder)
       setIsRecording(true)
 
-      // Detect silence
       detectSilence(stream, () => {
         stopRecording()
       })
 
-      // Auto-stop after 10 seconds max
       recordingTimeoutRef.current = setTimeout(() => {
         stopRecording()
       }, 10000)
@@ -209,7 +203,6 @@ function ChatAssistant() {
   }
 
   const sendVoiceMessage = async (audioBlob) => {
-    // Add placeholder message with transcribing status
     const messageId = addMessage('🎤 Transcribing...', 'user')
     setIsLoading(true)
 
@@ -226,26 +219,20 @@ function ChatAssistant() {
         throw new Error('Failed to process voice')
       }
 
-      // Get transcribed text and response from headers
       const transcribedText = response.headers.get('X-Transcribed-Text')
       const responseText = response.headers.get('X-Response-Text')
 
-      // Update the placeholder message with actual transcribed text
       if (transcribedText) {
         updateMessage(messageId, `🎤 ${transcribedText}`)
       } else {
         updateMessage(messageId, '🎤 Could not transcribe')
       }
 
-      // Get audio response
       const audioData = await response.blob()
-      
-      // Play audio response
       const audioUrl = URL.createObjectURL(audioData)
       const audio = new Audio(audioUrl)
       audio.play()
 
-      // Add bot response text
       if (responseText) {
         addMessage(responseText, 'bot')
       } else {
@@ -270,17 +257,14 @@ function ChatAssistant() {
 
   return (
     <>
-      {/* Collapsed button */}
       {!isOpen && (
         <div className="chat-button" onClick={() => setIsOpen(true)}>
           💬 Chat
         </div>
       )}
 
-      {/* Expanded chat panel */}
       {isOpen && (
         <div className="chat-panel">
-          {/* Header */}
           <div className="chat-header">
             <span className="chat-title">Document Bot</span>
             <button className="close-button" onClick={() => setIsOpen(false)}>
@@ -288,7 +272,6 @@ function ChatAssistant() {
             </button>
           </div>
 
-          {/* Backend status warning */}
           {backendStatus === 'offline' && (
             <div className="status-warning offline">
               ⚠ Backend offline. Start the API first.
@@ -300,7 +283,6 @@ function ChatAssistant() {
             </div>
           )}
 
-          {/* Messages area */}
           <div className="messages-area">
             {messages.map((msg, index) => (
               <div key={index} className={`message ${msg.sender}-message`}>
@@ -326,7 +308,6 @@ function ChatAssistant() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input area */}
           <div className="input-area">
             <input
               type="text"

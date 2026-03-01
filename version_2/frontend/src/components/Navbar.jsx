@@ -1,11 +1,10 @@
-import React from 'react'
 import './Navbar.css'
 
 function Navbar() {
   return (
     <nav className="navbar">
       <div className="navbar-left">
-        <div className="logo">Dotryder</div>
+        <img src="/Dot-trans.png" alt="Dotryder" className="logo-image" />
       </div>
       
       <div className="navbar-center">
