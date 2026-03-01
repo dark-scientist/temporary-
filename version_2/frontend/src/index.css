@@ -1,45 +1,48 @@
 /* Global CSS Reset and Variables */
 
 :root {
-  --golden-brown: #C8860A;
-  --blue-border: #4A90D9;
-  --white-bg: #FFFFFF;
-  --text-dark: #1a1a1a;
-  --grey-bg: #f8f8f8;
-  --light-grey: #f0f0f0;
-  --muted-grey: #555;
+  --red: #cb0000;
+  --red-light: #f33f3f;
+  --blue-dark: #00186c;
+  --blue-light: #7c96fd;
+  --bg: #fdfdfd;
+  --bg-grey: #dbdbdb;
+  --gradient-dark: linear-gradient(135deg, #3533cd, #000009);
+  --gradient-red: linear-gradient(135deg, #cb0000, #1800ad);
+  --gradient-light: linear-gradient(135deg, #fdfdfd, #dbdbdb);
+  --text-dark: #0a0a0a;
+  --text-muted: #555;
 }
 
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  transition: all 0.2s ease;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Figtree', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--white-bg);
+  background-color: var(--bg);
   color: var(--text-dark);
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Sora', sans-serif;
+  font-weight: 600;
 }
 
 button {
   cursor: pointer;
-  font-family: inherit;
-  transition: all 0.2s ease;
+  font-family: 'Figtree', sans-serif;
 }
 
 input, textarea {
-  font-family: inherit;
+  font-family: 'Figtree', sans-serif;
 }
 
 a {
-  transition: all 0.2s ease;
+  text-decoration: none;
 }

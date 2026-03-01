@@ -4,7 +4,7 @@ All settings for models, paths, and audio parameters
 """
 
 # Ollama LLM Configuration
-OLLAMA_MODEL = "llama3.2:3b"  # Change this to switch models: llama3.2:3b, qwen2.5:7b, deepseek-r1:7b
+OLLAMA_MODEL = "llama3.2:3b"  # Selected model
 OLLAMA_URL = "http://localhost:11434"
 
 # Whisper STT Configuration
