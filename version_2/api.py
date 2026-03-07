@@ -24,6 +24,9 @@ import time
 import tempfile
 import asyncio
 import shutil
+import logging
+import base64
+from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -41,24 +44,7 @@ from rag import RAGSystem
 from llm import OllamaLLM
 from stt import SpeechToText
 from tts import TextToSpeech
-from config import OLLAMA_MODEL
-
-# Initialize FastAPI app
-app = FastAPI(
-    title="Dotryder Voice RAG API",
-    description="RAG-powered conversational assistant with voice support",
-    version="1.0.0"
-)
-
-# Enable CORS for all origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["X-Transcribed-Text", "X-Response-Text"],
-)
+from config import ACTIVE_MODEL
 
 # Global instances
 rag_system = None
@@ -66,6 +52,7 @@ stt = None
 tts = None
 index_loaded = False
 executor = ThreadPoolExecutor(max_workers=4)
+logger = logging.getLogger("dotryder.api")
 
 
 # Request/Response models
@@ -89,15 +76,15 @@ class HealthResponse(BaseModel):
     index_loaded: bool
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Initialize RAG system and other components on startup."""
     global rag_system, stt, tts, index_loaded
     
     print("\n" + "="*60)
     print("  Dotryder Voice RAG API")
     print("  Docs: http://localhost:8000/docs")
-    print(f"  Model: {OLLAMA_MODEL}")
+    print(f"  Model: {ACTIVE_MODEL}")
     print("="*60 + "\n")
     
     # Check if vector store exists
@@ -119,6 +106,8 @@ async def startup_event():
     
     # Initialize STT
     try:
+        if shutil.which("ffmpeg") is None:
+            print("⚠️  ffmpeg not found in PATH. /voice transcription will not work.")
         print("[INIT] Loading Speech-to-Text...")
         stt = SpeechToText()
         print("✓ STT initialized\n")
@@ -137,6 +126,32 @@ async def startup_event():
     print("API Ready! Listening on http://0.0.0.0:8000")
     print("="*60 + "\n")
 
+    yield
+
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Dotryder Voice RAG API",
+    description="RAG-powered conversational assistant with voice support",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Enable CORS for all origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=[
+        "X-Transcribed-Text",
+        "X-Response-Text",
+        "X-Transcribed-Text-B64",
+        "X-Response-Text-B64",
+    ],
+)
+
 
 @app.get("/")
 async def root():
@@ -154,7 +169,7 @@ async def health_check():
     """Health check endpoint."""
     return HealthResponse(
         status="ok",
-        model=OLLAMA_MODEL,
+        model=ACTIVE_MODEL,
         index_loaded=index_loaded
     )
 
@@ -219,6 +234,28 @@ def _generate_tts(text: str, output_path: str):
     return tts.speak_to_file(text, output_path)
 
 
+def _audio_suffix(upload: UploadFile) -> str:
+    """Infer a temp-file suffix from upload metadata."""
+    content_type = (upload.content_type or "").lower()
+    filename = (upload.filename or "").lower()
+
+    if "webm" in content_type or filename.endswith(".webm"):
+        return ".webm"
+    if "ogg" in content_type or filename.endswith(".ogg"):
+        return ".ogg"
+    if "mp3" in content_type or filename.endswith(".mp3"):
+        return ".mp3"
+    if "wav" in content_type or filename.endswith(".wav"):
+        return ".wav"
+
+    return ".bin"
+
+
+def _b64_header(text: str) -> str:
+    """Encode UTF-8 text to ASCII-safe base64 for HTTP headers."""
+    return base64.b64encode(text.encode("utf-8")).decode("ascii")
+
+
 @app.post("/voice")
 async def voice(audio_file: UploadFile = File(...)):
     """
@@ -236,14 +273,26 @@ async def voice(audio_file: UploadFile = File(...)):
             status_code=503,
             detail="Voice components not initialized."
         )
+
+    if shutil.which("ffmpeg") is None:
+        raise HTTPException(
+            status_code=503,
+            detail="ffmpeg is not installed on the server. Voice transcription requires ffmpeg."
+        )
     
     temp_audio_path = None
     output_path = None
     
     try:
+        content = await audio_file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Uploaded audio file is empty.")
+
         # Save uploaded audio to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-            content = await audio_file.read()
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=_audio_suffix(audio_file)
+        ) as temp_audio:
             temp_audio.write(content)
             temp_audio_path = temp_audio.name
         
@@ -256,7 +305,10 @@ async def voice(audio_file: UploadFile = File(...)):
         )
         
         if not transcribed_text:
-            raise HTTPException(status_code=400, detail="Could not transcribe audio")
+            raise HTTPException(
+                status_code=422,
+                detail="No speech detected. Please speak clearly and try again."
+            )
         
         # Generate response
         response_text, _ = await loop.run_in_executor(
@@ -289,19 +341,36 @@ async def voice(audio_file: UploadFile = File(...)):
             iter([audio_data]),
             media_type="audio/wav",
             headers={
-                "X-Transcribed-Text": transcribed_text,
-                "X-Response-Text": response_text
+                "X-Transcribed-Text-B64": _b64_header(transcribed_text),
+                "X-Response-Text-B64": _b64_header(response_text)
             }
         )
     
+    except HTTPException as e:
+        if temp_audio_path and os.path.exists(temp_audio_path):
+            os.unlink(temp_audio_path)
+        if output_path and os.path.exists(output_path):
+            os.unlink(output_path)
+        raise e
+    except RuntimeError as e:
+        logger.exception("Speech-to-text engine error")
+        if temp_audio_path and os.path.exists(temp_audio_path):
+            os.unlink(temp_audio_path)
+        if output_path and os.path.exists(output_path):
+            os.unlink(output_path)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Speech-to-text engine error: {e}"
+        )
     except Exception as e:
+        logger.exception("Voice processing failed")
         # Clean up temp files on error
         if temp_audio_path and os.path.exists(temp_audio_path):
             os.unlink(temp_audio_path)
         if output_path and os.path.exists(output_path):
             os.unlink(output_path)
         
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Voice processing failed.")
 
 
 @app.post("/tts")

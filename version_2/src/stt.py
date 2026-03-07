@@ -32,7 +32,10 @@ class SpeechToText:
             audio_data (numpy.ndarray): Audio data as float32 array
             
         Returns:
-            str: Transcribed text, or None if transcription failed/empty
+            str: Transcribed text, or None if no speech was detected
+
+        Raises:
+            RuntimeError: If the transcription engine fails to decode/process audio
         """
         if audio_data is None or len(audio_data) == 0:
             return None
@@ -88,5 +91,4 @@ class SpeechToText:
             return full_text
             
         except Exception as e:
-            print(f"❌ Transcription error: {e}")
-            return None
+            raise RuntimeError(f"Transcription engine failed: {e}") from e

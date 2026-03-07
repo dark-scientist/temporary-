@@ -216,11 +216,35 @@ function ChatAssistant() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to process voice')
+        let detail = 'Failed to process voice'
+        try {
+          const errorBody = await response.json()
+          detail = errorBody?.detail || detail
+        } catch (_) {
+          // Ignore JSON parse errors and use fallback detail.
+        }
+        throw new Error(detail)
       }
 
-      const transcribedText = response.headers.get('X-Transcribed-Text')
-      const responseText = response.headers.get('X-Response-Text')
+      const decodeB64Utf8 = (value) => {
+        if (!value) return null
+        try {
+          const binary = atob(value)
+          const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
+          return new TextDecoder().decode(bytes)
+        } catch (_) {
+          return null
+        }
+      }
+
+      const transcribedText = (
+        decodeB64Utf8(response.headers.get('X-Transcribed-Text-B64')) ||
+        response.headers.get('X-Transcribed-Text')
+      )
+      const responseText = (
+        decodeB64Utf8(response.headers.get('X-Response-Text-B64')) ||
+        response.headers.get('X-Response-Text')
+      )
 
       if (transcribedText) {
         updateMessage(messageId, `🎤 ${transcribedText}`)
@@ -242,7 +266,7 @@ function ChatAssistant() {
     } catch (error) {
       console.error('Voice error:', error)
       updateMessage(messageId, '🎤 Could not transcribe')
-      addMessage('Could not process voice. Please try again.', 'bot')
+      addMessage(error.message || 'Could not process voice. Please try again.', 'bot')
     } finally {
       setIsLoading(false)
     }
