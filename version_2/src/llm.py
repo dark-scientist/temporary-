@@ -4,7 +4,7 @@ Generates responses using local Ollama models
 """
 
 import requests
-from config import OLLAMA_URL, OLLAMA_MODEL
+from config import OLLAMA_URL, ACTIVE_MODEL
 
 
 class OllamaLLM:
@@ -16,7 +16,7 @@ class OllamaLLM:
     def __init__(self):
         """Initialize Ollama LLM client."""
         self.base_url = OLLAMA_URL
-        self.model = OLLAMA_MODEL
+        self.model = ACTIVE_MODEL
         self.generate_url = f"{self.base_url}/api/generate"
         
         print(f"✓ Ollama LLM initialized (model: {self.model})")
@@ -31,11 +31,7 @@ class OllamaLLM:
     
     def generate(self, user_question, context):
         """Generate response using Ollama with RAG context."""
-        system_prompt = (
-            "You are a helpful assistant. Answer only using the provided context. "
-            "Keep your answer to 2-3 sentences since it will be spoken aloud. "
-            "Be natural and conversational."
-        )
+        system_prompt = """You are a helpful assistant answering questions about documents. Use the provided context to answer the question. If the context contains relevant information, use it to give a complete helpful answer. If the answer is directly in the context, answer confidently without saying "the context says". Keep your answer to 3-4 sentences since it will be spoken aloud. Be natural and conversational — answer as if you already know this information."""
         
         user_prompt = f"Context: {context}\n\nQuestion: {user_question}"
         
@@ -43,7 +39,12 @@ class OllamaLLM:
             "model": self.model,
             "prompt": user_prompt,
             "system": system_prompt,
-            "stream": False
+            "stream": False,
+            "options": {
+                "num_predict": 300,
+                "temperature": 0.7,
+                "stop": ["\n\n", "###", "Note:", "Additionally"]
+            }
         }
         
         try:

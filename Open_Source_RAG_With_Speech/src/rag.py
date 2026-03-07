@@ -1,3 +1,8 @@
+# IMPORTANT: After this change you must:
+# 1. Make sure nomic-embed-text is pulled: ollama pull nomic-embed-text
+# 2. Delete database/vector_store/ folder
+# 3. Run: python build_index.py to rebuild the index with new 768-dim vectors
+
 """
 RAG (Retrieval-Augmented Generation) module
 Handles document loading, chunking, embedding, and retrieval using FAISS
@@ -7,28 +12,49 @@ import os
 import pickle
 import numpy as np
 import faiss
-from sentence_transformers import SentenceTransformer
+import requests
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import PyPDF2
 from config import (
-    DOCUMENTS_PATH, VECTOR_STORE_PATH, EMBEDDING_MODEL_PATH,
+    DOCUMENTS_PATH, VECTOR_STORE_PATH, OLLAMA_EMBED_URL, EMBEDDING_MODEL,
     CHUNK_SIZE, CHUNK_OVERLAP, TOP_K
 )
+
+
+def get_embedding(text: str) -> list:
+    """Get embedding vector from nomic-embed-text via Ollama"""
+    try:
+        response = requests.post(OLLAMA_EMBED_URL, json={
+            "model": EMBEDDING_MODEL,
+            "prompt": text
+        })
+        response.raise_for_status()
+        return response.json()["embedding"]
+    except requests.exceptions.ConnectionError:
+        print("[RAG] ERROR: Ollama must be running for embeddings. Run: ollama serve")
+        raise
+    except Exception as e:
+        print(f"[RAG] ERROR: Failed to get embedding: {e}")
+        raise
 
 
 class RAGSystem:
     """
     Manages document indexing and retrieval using FAISS vector store.
-    Embeds documents using BGE model and retrieves relevant chunks.
+    Embeds documents using nomic-embed-text via Ollama.
     """
     
     def __init__(self):
         """Initialize RAG system, build or load vector store."""
         print("Initializing RAG system...")
         
-        print(f"Loading embedding model from {EMBEDDING_MODEL_PATH}...")
-        self.embedding_model = SentenceTransformer(EMBEDDING_MODEL_PATH)
-        print("✓ Embedding model loaded")
+        # Check if Ollama is running
+        try:
+            test_embedding = get_embedding("test")
+            print(f"✓ Embedding model ready ({EMBEDDING_MODEL})")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not connect to Ollama: {e}")
+            print("[RAG] ERROR: Ollama must be running for embeddings. Run: ollama serve")
         
         index_path = os.path.join(VECTOR_STORE_PATH, "faiss.index")
         chunks_path = os.path.join(VECTOR_STORE_PATH, "chunks.pkl")
@@ -92,6 +118,7 @@ class RAGSystem:
     
     def _build_vector_store(self):
         """Build FAISS index from documents in documents folder."""
+        # Delete database/vector_store/ and run build_index.py after this change
         documents = self._load_documents()
         
         if not documents:
@@ -104,13 +131,17 @@ class RAGSystem:
         print(f"Created {len(self.chunks)} chunks")
         
         print("Generating embeddings...")
-        embeddings = self.embedding_model.encode(
-            self.chunks,
-            show_progress_bar=True,
-            convert_to_numpy=True
-        )
+        embeddings = []
+        for i, chunk in enumerate(self.chunks):
+            if i % 10 == 0:
+                print(f"  Embedding chunk {i+1}/{len(self.chunks)}...")
+            embedding = get_embedding(chunk)
+            embeddings.append(embedding)
         
-        dimension = embeddings.shape[1]
+        embeddings = np.array(embeddings, dtype=np.float32)
+        
+        # nomic-embed-text produces 768 dimensional vectors
+        dimension = 768
         self.index = faiss.IndexFlatIP(dimension)
         
         faiss.normalize_L2(embeddings)
@@ -139,10 +170,8 @@ class RAGSystem:
         if not self.chunks or self.index is None:
             return "No documents available in the knowledge base."
         
-        query_embedding = self.embedding_model.encode(
-            [query],
-            convert_to_numpy=True
-        )
+        query_embedding = get_embedding(query)
+        query_embedding = np.array([query_embedding], dtype=np.float32)
         
         faiss.normalize_L2(query_embedding)
         

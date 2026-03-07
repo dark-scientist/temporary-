@@ -50,22 +50,56 @@ def check_existing_index():
     return True
 
 
-def check_embedding_model():
-    """Check if embedding model exists."""
-    from config import EMBEDDING_MODEL_PATH
+def check_ollama_service():
+    """Check if Ollama is running and nomic-embed-text is available."""
+    import subprocess
+    from config import EMBEDDING_MODEL
     
-    if not os.path.exists(EMBEDDING_MODEL_PATH):
-        print(f"\n❌ Error: Embedding model not found at {EMBEDDING_MODEL_PATH}")
-        print("\nPlease run the download command from the README first:")
-        print('python -c "')
-        print("from sentence_transformers import SentenceTransformer")
-        print("model = SentenceTransformer('BAAI/bge-small-en-v1.5')")
-        print("model.save('./model/models/bge-small-en-v1.5')")
-        print("print('Embedding model saved successfully.')")
-        print('"')
+    # Check if Ollama is running
+    try:
+        result = subprocess.run(
+            ["curl", "-s", "http://localhost:11434/api/tags"],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        
+        if result.returncode != 0:
+            print("\n❌ Error: Ollama is not running!")
+            print("\nPlease start Ollama first:")
+            print("  ollama serve")
+            return False
+        
+        print("✓ Ollama service is running")
+        
+    except Exception as e:
+        print("\n❌ Error: Cannot connect to Ollama")
+        print(f"Details: {e}")
+        print("\nPlease start Ollama first:")
+        print("  ollama serve")
         return False
     
-    print(f"✓ Embedding model found at {EMBEDDING_MODEL_PATH}")
+    # Check if nomic-embed-text is pulled
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        if EMBEDDING_MODEL not in result.stdout:
+            print(f"\n❌ Error: {EMBEDDING_MODEL} model not found!")
+            print(f"\nPlease pull the model first:")
+            print(f"  ollama pull {EMBEDDING_MODEL}")
+            return False
+        
+        print(f"✓ Embedding model {EMBEDDING_MODEL} is available")
+        
+    except Exception as e:
+        print(f"\n❌ Error checking Ollama models: {e}")
+        return False
+    
     return True
 
 
@@ -121,8 +155,8 @@ def main():
     if not check_existing_index():
         sys.exit(0)
     
-    # Step 3: Check embedding model
-    if not check_embedding_model():
+    # Step 3: Check Ollama service and embedding model
+    if not check_ollama_service():
         sys.exit(1)
     
     # Step 4: Build the index

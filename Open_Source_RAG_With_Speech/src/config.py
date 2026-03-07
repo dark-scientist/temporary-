@@ -13,7 +13,9 @@ WHISPER_DEVICE = "cpu"
 WHISPER_COMPUTE_TYPE = "int8"
 
 # Embedding Model Configuration
-EMBEDDING_MODEL_PATH = "./model/models/bge-small-en-v1.5"
+# EMBEDDING_MODEL_PATH = "./model/models/bge-small-en-v1.5"  # Old BGE model (384 dims)
+EMBEDDING_MODEL = "nomic-embed-text"  # served via Ollama
+OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
 
 # Piper TTS Configuration
 PIPER_EXE = "./piper/piper_exe"
