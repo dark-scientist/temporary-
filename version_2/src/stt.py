@@ -43,7 +43,7 @@ class SpeechToText:
         try:
             segments, info = self.model.transcribe(
                 audio_data,
-                beam_size=5,
+                beam_size=1,
                 language="en"
             )
             
@@ -75,7 +75,7 @@ class SpeechToText:
         try:
             segments, info = self.model.transcribe(
                 audio_file_path,
-                beam_size=5,
+                beam_size=1,
                 language="en"
             )
             

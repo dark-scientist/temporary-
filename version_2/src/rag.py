@@ -20,14 +20,20 @@ from config import (
     CHUNK_SIZE, CHUNK_OVERLAP, TOP_K
 )
 
+_embed_session = requests.Session()
+
 
 def get_embedding(text: str) -> list:
     """Get embedding vector from nomic-embed-text via Ollama"""
     try:
-        response = requests.post(OLLAMA_EMBED_URL, json={
-            "model": EMBEDDING_MODEL,
-            "prompt": text
-        })
+        response = _embed_session.post(
+            OLLAMA_EMBED_URL,
+            json={
+                "model": EMBEDDING_MODEL,
+                "prompt": text
+            },
+            timeout=(5, 60)
+        )
         response.raise_for_status()
         return response.json()["embedding"]
     except requests.exceptions.ConnectionError:

@@ -9,6 +9,7 @@ OLLAMA_URL = "http://localhost:11434"
 # Production models — both available, switch via this config
 OLLAMA_MODEL = "gemma3:4b"          # Fast model — default
 OLLAMA_MODEL_QUALITY = "gemma3:4b" # Quality model — for complex queries
+OLLAMA_MODEL_FALLBACK = "llama3.2:3b"  # Backup model if primary fails
 
 # To use quality model set USE_QUALITY_MODEL = True
 USE_QUALITY_MODEL = True
@@ -43,4 +44,3 @@ SILENCE_DURATION = 1.5
 # Paths
 DOCUMENTS_PATH = "./data/documents"
 VECTOR_STORE_PATH = "./database/vector_store"
-ACTIVE_MODEL = OLLAMA_MODEL_QUALITY if USE_QUALITY_MODEL else OLLAMA_MODEL

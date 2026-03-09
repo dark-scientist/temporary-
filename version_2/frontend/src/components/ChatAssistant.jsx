@@ -13,6 +13,7 @@ function ChatAssistant() {
   const [mediaRecorder, setMediaRecorder] = useState(null)
   const [audioContext, setAudioContext] = useState(null)
   const [messageIdCounter, setMessageIdCounter] = useState(0)
+  const [isHovered, setIsHovered] = useState(false)
   
   const messagesEndRef = useRef(null)
   const recordingTimeoutRef = useRef(null)
@@ -73,10 +74,17 @@ function ChatAssistant() {
     addMessage(userMessage, 'user')
     setIsLoading(true)
 
+    // Get current user from localStorage
+    const currentUser = JSON.parse(localStorage.getItem('dotryder_user') || '{}')
+    const username = currentUser.username || 'anonymous'
+
     try {
       const response = await fetch(`${API_BASE_URL}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Username': username
+        },
         body: JSON.stringify({
           message: userMessage
         })
@@ -203,8 +211,12 @@ function ChatAssistant() {
   }
 
   const sendVoiceMessage = async (audioBlob) => {
-    const messageId = addMessage('🎤 Transcribing...', 'user')
+    const messageId = addMessage('Transcribing...', 'user')
     setIsLoading(true)
+
+    // Get current user from localStorage
+    const currentUser = JSON.parse(localStorage.getItem('dotryder_user') || '{}')
+    const username = currentUser.username || 'anonymous'
 
     try {
       const formData = new FormData()
@@ -212,6 +224,9 @@ function ChatAssistant() {
 
       const response = await fetch(`${API_BASE_URL}/voice`, {
         method: 'POST',
+        headers: {
+          'X-Username': username
+        },
         body: formData
       })
 
@@ -247,9 +262,9 @@ function ChatAssistant() {
       )
 
       if (transcribedText) {
-        updateMessage(messageId, `🎤 ${transcribedText}`)
+        updateMessage(messageId, transcribedText)
       } else {
-        updateMessage(messageId, '🎤 Could not transcribe')
+        updateMessage(messageId, 'Could not transcribe')
       }
 
       const audioData = await response.blob()
@@ -260,12 +275,12 @@ function ChatAssistant() {
       if (responseText) {
         addMessage(responseText, 'bot')
       } else {
-        addMessage('🔊 Playing audio response...', 'bot')
+        addMessage('Playing audio response...', 'bot')
       }
 
     } catch (error) {
       console.error('Voice error:', error)
-      updateMessage(messageId, '🎤 Could not transcribe')
+      updateMessage(messageId, 'Could not transcribe')
       addMessage(error.message || 'Could not process voice. Please try again.', 'bot')
     } finally {
       setIsLoading(false)
@@ -282,8 +297,54 @@ function ChatAssistant() {
   return (
     <>
       {!isOpen && (
-        <div className="chat-button" onClick={() => setIsOpen(true)}>
-          💬 Chat
+        <div 
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #000009, #3533cd, #00186c)',
+            boxShadow: '0 4px 24px rgba(53, 51, 205, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'transform 0.2s',
+            transform: isHovered ? 'scale(1.08)' : 'scale(1)',
+            zIndex: 1000,
+          }}
+          onClick={() => setIsOpen(true)}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          <img 
+            src="/Dot-trans.png" 
+            alt="Chat"
+            style={{ 
+              width: '38px', 
+              height: '38px', 
+              objectFit: 'contain' 
+            }}
+          />
+          {isHovered && (
+            <div style={{
+              position: 'absolute',
+              bottom: '70px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: '#1a1a1a',
+              color: 'white',
+              padding: '4px 12px',
+              borderRadius: '20px',
+              fontFamily: "'Figtree', sans-serif",
+              fontSize: '0.8rem',
+              whiteSpace: 'nowrap',
+            }}>
+              Chat
+            </div>
+          )}
         </div>
       )}
 
@@ -347,8 +408,26 @@ function ChatAssistant() {
               onClick={toggleRecording}
               disabled={isLoading}
               title={isRecording ? 'Stop recording' : 'Start recording'}
+              style={{
+                background: isRecording ? '#cb0000' : '#e0e0ea',
+                color: isRecording ? 'white' : '#0a0a0a',
+              }}
             >
-              {isRecording ? '⏹' : '🎤'}
+              <svg 
+                width="18" 
+                height="18" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+              >
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
             </button>
             <button
               className="send-button"

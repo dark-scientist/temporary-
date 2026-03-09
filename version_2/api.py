@@ -26,6 +26,8 @@ import asyncio
 import shutil
 import logging
 import base64
+import sqlite3
+from typing import Optional
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -33,7 +35,7 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, './src')
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
@@ -50,9 +52,49 @@ from config import ACTIVE_MODEL
 rag_system = None
 stt = None
 tts = None
+llm_client = None
 index_loaded = False
 executor = ThreadPoolExecutor(max_workers=4)
 logger = logging.getLogger("dotryder.api")
+DB_PATH = "./logs/users.db"
+
+
+def _ensure_chat_history_table():
+    """Create the chat history table if it does not exist."""
+    os.makedirs("./logs", exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            question TEXT NOT NULL,
+            response TEXT NOT NULL,
+            model_used TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            time_taken REAL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def _log_chat_history(username: str, question: str, response: str, time_taken: float):
+    """Persist a chat interaction for stats/history endpoints."""
+    _ensure_chat_history_table()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO chat_history (username, question, response, model_used, time_taken)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (username, question, response, ACTIVE_MODEL, round(time_taken, 2)),
+    )
+    conn.commit()
+    conn.close()
 
 
 # Request/Response models
@@ -79,7 +121,7 @@ class HealthResponse(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize RAG system and other components on startup."""
-    global rag_system, stt, tts, index_loaded
+    global rag_system, stt, tts, llm_client, index_loaded
     
     print("\n" + "="*60)
     print("  Dotryder Voice RAG API")
@@ -121,6 +163,21 @@ async def lifespan(app: FastAPI):
         print("✓ TTS initialized\n")
     except Exception as e:
         print(f"❌ Error loading TTS: {e}\n")
+
+    # Initialize LLM client once to avoid per-request setup cost.
+    try:
+        print("[INIT] Loading LLM client...")
+        llm_client = OllamaLLM()
+        print("✓ LLM client initialized\n")
+    except Exception as e:
+        print(f"❌ Error loading LLM client: {e}\n")
+        llm_client = None
+
+    # Ensure SQLite schema exists for stats/history endpoints.
+    try:
+        _ensure_chat_history_table()
+    except Exception as e:
+        print(f"⚠️  Could not initialize chat history database: {e}\n")
     
     print("="*60)
     print("API Ready! Listening on http://0.0.0.0:8000")
@@ -176,21 +233,27 @@ async def health_check():
 
 def _generate_response(message: str):
     """Synchronous function to generate response."""
+    if llm_client is None:
+        raise RuntimeError("LLM client not initialized")
+
+    start_time = time.time()
     # Retrieve context from RAG
     context = rag_system.retrieve(message)
+    retrieval_ms = (time.time() - start_time) * 1000
     
     # Count chunks
     sources_used = len([c for c in context.split('\n\n') if c.strip()])
     
-    # Use model from config
-    llm = OllamaLLM()
-    response = llm.generate(message, context)
+    llm_start = time.time()
+    response = llm_client.generate(message, context)
+    llm_ms = (time.time() - llm_start) * 1000
+    print(f"[Perf] retrieve={retrieval_ms:.0f}ms llm={llm_ms:.0f}ms")
     
     return response, sources_used
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, x_username: str = Header(default="anonymous")):
     """
     Text-based chat endpoint.
     Retrieves context from RAG and generates response using LLM.
@@ -213,6 +276,12 @@ async def chat(request: ChatRequest):
         )
         
         time_taken = time.time() - start_time
+
+        username = (x_username or "anonymous").strip() or "anonymous"
+        try:
+            _log_chat_history(username, request.message, response, time_taken)
+        except Exception as e:
+            print(f"[DB] Chat history write error: {e}")
         
         return ChatResponse(
             response=response,
@@ -257,7 +326,10 @@ def _b64_header(text: str) -> str:
 
 
 @app.post("/voice")
-async def voice(audio_file: UploadFile = File(...)):
+async def voice(
+    audio_file: UploadFile = File(...),
+    x_username: str = Header(default="anonymous")
+):
     """
     Voice-based chat endpoint.
     Transcribes audio, retrieves context, generates response, and returns TTS audio.
@@ -284,6 +356,7 @@ async def voice(audio_file: UploadFile = File(...)):
     output_path = None
     
     try:
+        voice_start = time.time()
         content = await audio_file.read()
         if not content:
             raise HTTPException(status_code=400, detail="Uploaded audio file is empty.")
@@ -303,6 +376,7 @@ async def voice(audio_file: UploadFile = File(...)):
             _transcribe_audio,
             temp_audio_path
         )
+        transcribe_ms = (time.time() - voice_start) * 1000
         
         if not transcribed_text:
             raise HTTPException(
@@ -316,6 +390,7 @@ async def voice(audio_file: UploadFile = File(...)):
             _generate_response,
             transcribed_text
         )
+        llm_pipeline_ms = (time.time() - voice_start) * 1000
         
         # Generate TTS audio
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_output:
@@ -327,6 +402,18 @@ async def voice(audio_file: UploadFile = File(...)):
             response_text,
             output_path
         )
+        tts_total_ms = (time.time() - voice_start) * 1000
+        print(
+            f"[Perf][Voice] transcribe={transcribe_ms:.0f}ms "
+            f"to_response={llm_pipeline_ms:.0f}ms total_with_tts={tts_total_ms:.0f}ms"
+        )
+
+        username = (x_username or "anonymous").strip() or "anonymous"
+        try:
+            # Voice interactions are part of chat history and stats.
+            _log_chat_history(username, transcribed_text, response_text, 0.0)
+        except Exception as e:
+            print(f"[DB] Voice chat history write error: {e}")
         
         # Read output audio
         with open(output_path, 'rb') as f:
@@ -523,6 +610,112 @@ async def upload_documents(files: list[UploadFile] = File(...)):
         }
     
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/chat-history")
+async def get_chat_history(username: Optional[str] = None, limit: int = 0):
+    """Get recent chat history for a user"""
+    try:
+        _ensure_chat_history_table()
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        normalized_username = (username or "").strip()
+        normalized_limit = max(0, limit)
+
+        if normalized_username and normalized_limit > 0:
+            cursor.execute(
+                """
+                SELECT id, username, question, response, model_used, timestamp, time_taken
+                FROM chat_history
+                WHERE username = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (normalized_username, normalized_limit),
+            )
+        elif normalized_username:
+            cursor.execute(
+                """
+                SELECT id, username, question, response, model_used, timestamp, time_taken
+                FROM chat_history
+                WHERE username = ?
+                ORDER BY timestamp DESC
+                """,
+                (normalized_username,),
+            )
+        elif normalized_limit > 0:
+            cursor.execute(
+                """
+                SELECT id, username, question, response, model_used, timestamp, time_taken
+                FROM chat_history
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (normalized_limit,),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT id, username, question, response, model_used, timestamp, time_taken
+                FROM chat_history
+                ORDER BY timestamp DESC
+                """
+            )
+        rows = cursor.fetchall()
+        conn.close()
+        return {
+            "username": normalized_username or None,
+            "history": [
+                {
+                    "id": row[0],
+                    "username": row[1],
+                    "question": row[2],
+                    "response": row[3],
+                    "model_used": row[4],
+                    "timestamp": row[5],
+                    "time_taken": row[6]
+                }
+                for row in rows
+            ]
+        }
+    except Exception as e:
+        print(f"[DB] Chat history fetch error: {e}")
+        return {"username": username, "history": []}
+
+
+@app.get("/stats")
+async def get_stats():
+    """Get real system statistics"""
+    try:
+        docs_path = "./data/documents"
+        files = [f for f in os.listdir(docs_path) if f.endswith(('.pdf', '.txt'))] if os.path.exists(docs_path) else []
+        total_size = sum(os.path.getsize(os.path.join(docs_path, f)) for f in files) / (1024*1024) if files else 0
+        pdf_count = len([f for f in files if f.endswith('.pdf')])
+        txt_count = len([f for f in files if f.endswith('.txt')])
+        
+        _ensure_chat_history_table()
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM chat_history")
+        total_queries = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(DISTINCT username) FROM chat_history WHERE date(timestamp) = date('now')")
+        active_users = cursor.fetchone()[0]
+        conn.close()
+        
+        return {
+            "totalDocuments": len(files),
+            "totalSizeMB": round(total_size, 1),
+            "totalChunks": rag_system.index.ntotal if rag_system and hasattr(rag_system, 'index') else 0,
+            "totalQueries": total_queries,
+            "activeUsers": active_users,
+            "documentTypes": [
+                {"name": "PDF", "value": pdf_count, "color": "#3533cd"},
+                {"name": "TXT", "value": txt_count, "color": "#7c96fd"}
+            ]
+        }
+    except Exception as e:
+        print(f"[Stats] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
