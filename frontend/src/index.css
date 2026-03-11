@@ -1,0 +1,48 @@
+/* Global CSS Reset and Variables */
+
+:root {
+  --red: #cb0000;
+  --red-light: #f33f3f;
+  --blue-dark: #00186c;
+  --blue-light: #7c96fd;
+  --bg: #fdfdfd;
+  --bg-grey: #dbdbdb;
+  --gradient-dark: linear-gradient(135deg, #3533cd, #000009);
+  --gradient-red: linear-gradient(135deg, #cb0000, #1800ad);
+  --gradient-light: linear-gradient(135deg, #fdfdfd, #dbdbdb);
+  --text-dark: #0a0a0a;
+  --text-muted: #555;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+body {
+  font-family: 'Figtree', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg);
+  color: var(--text-dark);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Sora', sans-serif;
+  font-weight: 600;
+}
+
+button {
+  cursor: pointer;
+  font-family: 'Figtree', sans-serif;
+}
+
+input, textarea {
+  font-family: 'Figtree', sans-serif;
+}
+
+a {
+  text-decoration: none;
+}
