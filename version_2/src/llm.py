@@ -41,11 +41,17 @@ class OllamaLLM:
             "prompt": user_prompt,
             "system": system_prompt,
             "stream": False,
+            "keep_alive": "5m",
             "options": {
-                # Shorter responses reduce latency for both text and voice flows.
-                "num_predict": 180,
-                "temperature": 0.7,
-                "stop": ["\n\n", "###", "Note:", "Additionally"]
+                # Keep responses concise while preserving enough context for RAG.
+                "num_predict": 80,
+                "temperature": 0.1,     # More deterministic
+                "num_thread": 8,        # Max threads
+                "num_ctx": 2048,
+                "top_k": 1,             # Greedy decoding
+                "top_p": 0.9,
+                "repeat_penalty": 1.1,
+                "stop": ["###"]
             }
         }
 
@@ -63,9 +69,44 @@ class OllamaLLM:
             raise RuntimeError(f"Model '{model_name}' returned empty response")
         return text
 
+    def _is_refusal_like(self, text: str) -> bool:
+        """Detect common 'insufficient context' style replies from the model."""
+        low = (text or "").lower()
+        patterns = [
+            "cannot answer",
+            "can't answer",
+            "not enough information",
+            "insufficient information",
+            "context does not provide",
+            "not specified in the context",
+            "provided context"
+        ]
+        return any(p in low for p in patterns)
+
+    def _fallback_summary_from_context(self, context: str) -> str:
+        """
+        Deterministic summary fallback for generic document questions when
+        model drifts into refusal despite available context.
+        """
+        text = " ".join((context or "").split())
+        if not text:
+            return "I could not find relevant content in the knowledge base."
+        # Keep short for voice and chat UI.
+        return f"The document discusses: {text[:220].rstrip(' ,;:.')}."
+
     def generate(self, user_question, context):
         """Generate response using Ollama with RAG context."""
-        system_prompt = """You are a helpful assistant answering questions about documents. Use the provided context to answer the question. If the context contains relevant information, use it to give a complete helpful answer. If the answer is directly in the context, answer confidently without saying "the context says". Keep your answer to 3-4 sentences since it will be spoken aloud. Be natural and conversational — answer as if you already know this information."""
+        if not context or not context.strip():
+            return "I could not find relevant content in the knowledge base."
+        if context.strip() == "No documents available in the knowledge base.":
+            return "No documents are currently indexed in the knowledge base."
+
+        system_prompt = (
+            "Use only the provided context to answer in one short sentence. "
+            "Start directly with the answer; do not add prefixes like 'Sure' or 'Here is'. "
+            "If asked 'what is this document about', summarize the document topic from context. "
+            "Do not claim the document is unspecified when context is present."
+        )
         
         user_prompt = f"Context: {context}\n\nQuestion: {user_question}"
 
@@ -78,7 +119,10 @@ class OllamaLLM:
             try:
                 if idx > 0:
                     print(f"[LLM] Primary failed, trying fallback model: {model_name}")
-                return self._try_generate(model_name, user_prompt, system_prompt)
+                answer = self._try_generate(model_name, user_prompt, system_prompt)
+                if self._is_refusal_like(answer):
+                    return self._fallback_summary_from_context(context)
+                return answer
             except Exception as e:
                 print(f"[LLM] Model '{model_name}' failed: {e}")
                 last_error = e
