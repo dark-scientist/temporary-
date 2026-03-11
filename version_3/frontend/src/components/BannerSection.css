@@ -1,0 +1,31 @@
+.banner-section {
+  padding: 40px;
+  background-color: white;
+}
+
+.banner-container {
+  display: flex;
+  gap: 30px;
+}
+
+.banner-box {
+  flex: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 28, 0.10);
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.banner-box:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 28px rgba(0, 0, 28, 0.15);
+}
+
+.banner-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

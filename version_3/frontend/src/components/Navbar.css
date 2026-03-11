@@ -1,0 +1,55 @@
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 40px;
+  background: linear-gradient(135deg, #000009, #3533cd, #00186c);
+  box-shadow: 0 4px 20px rgba(0, 0, 9, 0.3);
+}
+
+.navbar-left {
+  display: flex;
+  align-items: center;
+}
+
+.logo-image {
+  height: 48px;
+  width: auto;
+  object-fit: contain;
+}
+
+.navbar-center {
+  display: flex;
+  gap: 40px;
+}
+
+.nav-link {
+  font-family: 'Figtree', sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: white;
+  position: relative;
+}
+
+.nav-link:hover {
+  color: #f33f3f;
+}
+
+.navbar-right .user-profile {
+  display: flex;
+  align-items: center;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--gradient-dark);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Figtree', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+}
