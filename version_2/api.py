@@ -27,6 +27,7 @@ import shutil
 import logging
 import base64
 import sqlite3
+import re
 from typing import Optional
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
@@ -57,6 +58,33 @@ index_loaded = False
 executor = ThreadPoolExecutor(max_workers=4)
 logger = logging.getLogger("dotryder.api")
 DB_PATH = "./logs/users.db"
+
+
+def _is_greeting_message(message: str) -> bool:
+    """Return True for short greeting-only messages."""
+    normalized = re.sub(r"[^a-z\s]", " ", (message or "").lower()).strip()
+    if not normalized:
+        return False
+    greeting_phrases = {
+        "hi", "hello", "hey", "hii", "heyy",
+        "good morning", "good afternoon", "good evening"
+    }
+    return normalized in greeting_phrases
+
+
+def _warm_up_llm():
+    """Warm the model once at startup to avoid first-request cold latency."""
+    if llm_client is None:
+        return
+    try:
+        start = time.time()
+        llm_client.generate(
+            "Warm up model.",
+            "Service startup warmup context."
+        )
+        print(f"✓ LLM warm-up completed in {time.time() - start:.2f}s\n")
+    except Exception as e:
+        print(f"⚠️  LLM warm-up skipped: {e}\n")
 
 
 def _ensure_chat_history_table():
@@ -168,6 +196,7 @@ async def lifespan(app: FastAPI):
     try:
         print("[INIT] Loading LLM client...")
         llm_client = OllamaLLM()
+        _warm_up_llm()
         print("✓ LLM client initialized\n")
     except Exception as e:
         print(f"❌ Error loading LLM client: {e}\n")
@@ -236,13 +265,19 @@ def _generate_response(message: str):
     if llm_client is None:
         raise RuntimeError("LLM client not initialized")
 
+    if _is_greeting_message(message):
+        return "Hello, I'm your AI assistant. How may I assist you today?", 0
+
     start_time = time.time()
     # Retrieve context from RAG
     context = rag_system.retrieve(message)
     retrieval_ms = (time.time() - start_time) * 1000
     
-    # Count chunks
-    sources_used = len([c for c in context.split('\n\n') if c.strip()])
+    # Count retrieved chunks, excluding sentinel no-document message.
+    if context.strip() == "No documents available in the knowledge base.":
+        sources_used = 0
+    else:
+        sources_used = len([c for c in context.split('\n\n') if c.strip()])
     
     llm_start = time.time()
     response = llm_client.generate(message, context)

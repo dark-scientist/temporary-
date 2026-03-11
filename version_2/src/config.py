@@ -7,12 +7,12 @@ All settings for models, paths, and audio parameters
 OLLAMA_URL = "http://localhost:11434"
 
 # Production models — both available, switch via this config
-OLLAMA_MODEL = "gemma3:4b"          # Fast model — default
+OLLAMA_MODEL = "llama3.2:3b"       # Fast model — default
 OLLAMA_MODEL_QUALITY = "gemma3:4b" # Quality model — for complex queries
-OLLAMA_MODEL_FALLBACK = "llama3.2:3b"  # Backup model if primary fails
+OLLAMA_MODEL_FALLBACK = "smollm2:1.7b"  # Backup model if primary fails
 
 # To use quality model set USE_QUALITY_MODEL = True
-USE_QUALITY_MODEL = True
+USE_QUALITY_MODEL = False
 
 # Active model — used by all modules
 ACTIVE_MODEL = OLLAMA_MODEL_QUALITY if USE_QUALITY_MODEL else OLLAMA_MODEL
@@ -34,7 +34,7 @@ PIPER_VOICE = "./piper/en_US-lessac-medium.onnx"
 # RAG Configuration
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
-TOP_K = 3
+TOP_K = 1
 
 # Audio Configuration
 SAMPLE_RATE = 16000

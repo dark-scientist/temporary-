@@ -8,6 +8,7 @@ function ChatAssistant() {
   const [messages, setMessages] = useState([])
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [loadingSource, setLoadingSource] = useState(null)
   const [isRecording, setIsRecording] = useState(false)
   const [backendStatus, setBackendStatus] = useState('checking')
   const [mediaRecorder, setMediaRecorder] = useState(null)
@@ -17,6 +18,8 @@ function ChatAssistant() {
   
   const messagesEndRef = useRef(null)
   const recordingTimeoutRef = useRef(null)
+  const speechRecognitionRef = useRef(null)
+  const liveTranscriptRef = useRef('')
 
   useEffect(() => {
     checkBackendHealth()
@@ -61,7 +64,7 @@ function ChatAssistant() {
   }
 
   const updateMessage = (id, newText) => {
-    setMessages(prev => 
+    setMessages(prev =>
       prev.map(msg => msg.id === id ? { ...msg, text: newText } : msg)
     )
   }
@@ -73,6 +76,7 @@ function ChatAssistant() {
     setInputText('')
     addMessage(userMessage, 'user')
     setIsLoading(true)
+    setLoadingSource('chat')
 
     // Get current user from localStorage
     const currentUser = JSON.parse(localStorage.getItem('dotryder_user') || '{}')
@@ -101,6 +105,7 @@ function ChatAssistant() {
       addMessage('Sorry, something went wrong. Is the backend running?', 'bot')
     } finally {
       setIsLoading(false)
+      setLoadingSource(null)
     }
   }
 
@@ -151,8 +156,58 @@ function ChatAssistant() {
     checkAudioLevel()
   }
 
+  const startSpeechRecognition = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      return
+    }
+
+    try {
+      const recognition = new SpeechRecognition()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = 'en-US'
+
+      recognition.onresult = (event) => {
+        let transcript = ''
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += `${event.results[i][0].transcript} `
+        }
+
+        const normalized = transcript.trim().replace(/\s+/g, ' ')
+        if (normalized) {
+          liveTranscriptRef.current = normalized
+        }
+      }
+
+      recognition.onend = () => {
+        if (speechRecognitionRef.current === recognition) {
+          speechRecognitionRef.current = null
+        }
+      }
+
+      speechRecognitionRef.current = recognition
+      recognition.start()
+    } catch (_) {
+      speechRecognitionRef.current = null
+    }
+  }
+
+  const stopSpeechRecognition = () => {
+    const recognition = speechRecognitionRef.current
+    if (!recognition) return
+
+    speechRecognitionRef.current = null
+    try {
+      recognition.stop()
+    } catch (_) {
+      // Ignore stop errors from already-ended recognition sessions.
+    }
+  }
+
   const startRecording = async () => {
     try {
+      liveTranscriptRef.current = ''
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const recorder = new MediaRecorder(stream, { 
         mimeType: 'audio/webm;codecs=opus' 
@@ -166,8 +221,10 @@ function ChatAssistant() {
       }
 
       recorder.onstop = async () => {
+        const optimisticTranscript = liveTranscriptRef.current
+        stopSpeechRecognition()
         const audioBlob = new Blob(chunks, { type: 'audio/webm' })
-        await sendVoiceMessage(audioBlob)
+        await sendVoiceMessage(audioBlob, optimisticTranscript)
         stream.getTracks().forEach(track => track.stop())
         if (audioContext) {
           audioContext.close()
@@ -177,6 +234,7 @@ function ChatAssistant() {
       recorder.start()
       setMediaRecorder(recorder)
       setIsRecording(true)
+      startSpeechRecognition()
 
       detectSilence(stream, () => {
         stopRecording()
@@ -193,6 +251,7 @@ function ChatAssistant() {
   }
 
   const stopRecording = () => {
+    stopSpeechRecognition()
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       mediaRecorder.stop()
       setIsRecording(false)
@@ -210,9 +269,12 @@ function ChatAssistant() {
     }
   }
 
-  const sendVoiceMessage = async (audioBlob) => {
-    const messageId = addMessage('Transcribing...', 'user')
+  const sendVoiceMessage = async (audioBlob, optimisticTranscript = '') => {
+    const normalizedOptimistic = optimisticTranscript.trim().replace(/\s+/g, ' ')
+    const hasOptimistic = normalizedOptimistic.length > 0
+    const messageId = addMessage(hasOptimistic ? normalizedOptimistic : 'Transcribing...', 'user')
     setIsLoading(true)
+    setLoadingSource('voice')
 
     // Get current user from localStorage
     const currentUser = JSON.parse(localStorage.getItem('dotryder_user') || '{}')
@@ -262,8 +324,11 @@ function ChatAssistant() {
       )
 
       if (transcribedText) {
-        updateMessage(messageId, transcribedText)
-      } else {
+        const normalizedTranscribed = transcribedText.trim()
+        if (!hasOptimistic || normalizedTranscribed.toLowerCase() !== normalizedOptimistic.toLowerCase()) {
+          updateMessage(messageId, normalizedTranscribed)
+        }
+      } else if (!hasOptimistic) {
         updateMessage(messageId, 'Could not transcribe')
       }
 
@@ -280,10 +345,13 @@ function ChatAssistant() {
 
     } catch (error) {
       console.error('Voice error:', error)
-      updateMessage(messageId, 'Could not transcribe')
+      if (!hasOptimistic) {
+        updateMessage(messageId, 'Could not transcribe')
+      }
       addMessage(error.message || 'Could not process voice. Please try again.', 'bot')
     } finally {
       setIsLoading(false)
+      setLoadingSource(null)
     }
   }
 
@@ -380,7 +448,7 @@ function ChatAssistant() {
               </div>
             ))}
 
-            {isLoading && (
+            {isLoading && (loadingSource === 'chat' || loadingSource === 'voice') && (
               <div className="message bot-message">
                 <div className="message-bubble typing-indicator">
                   <span></span>

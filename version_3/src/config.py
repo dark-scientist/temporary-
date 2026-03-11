@@ -6,10 +6,10 @@ All settings for models, paths, and audio parameters
 # Ollama LLM Configuration
 OLLAMA_URL = "http://localhost:11434"
 
-# Production models — both available, switch via this config
-OLLAMA_MODEL = "llama3.2:3b"       # Fast model — default
-OLLAMA_MODEL_QUALITY = "gemma3:4b" # Quality model — for complex queries
-OLLAMA_MODEL_FALLBACK = "smollm2:1.7b"  # Backup model if primary fails
+# Production models — use models that are actually installed
+OLLAMA_MODEL = "llama3.2:3b"           # Primary model
+OLLAMA_MODEL_QUALITY = "gemma3:4b"     # Quality model (if available)
+OLLAMA_MODEL_FALLBACK = "llama3.2:3b"  # Same as primary for now (no 404 errors)
 
 # To use quality model set USE_QUALITY_MODEL = True
 USE_QUALITY_MODEL = False

@@ -41,7 +41,7 @@ class OllamaLLM:
             "prompt": user_prompt,
             "system": system_prompt,
             "stream": False,
-            "keep_alive": "5m",
+            "keep_alive": "10m",
             "options": {
                 # Keep responses concise while preserving enough context for RAG.
                 "num_predict": 80,
@@ -60,7 +60,7 @@ class OllamaLLM:
         response = self.session.post(
             self.generate_url,
             json=self._build_payload(model_name, user_prompt, system_prompt),
-            timeout=(5, 120)
+            timeout=(5, 300)
         )
         response.raise_for_status()
         result = response.json()
